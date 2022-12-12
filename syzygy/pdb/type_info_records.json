@@ -1,0 +1,334 @@
+{
+  "structs": [
+    {
+      "name": "LeafArgList",
+      "first_extra_field": "arg"
+    },
+    {
+      "name": "LeafArray",
+      "first_extra_field": "data",
+      "extra_fields": [
+        {
+          "name": "size",
+          "type_name": "UnsignedNumeric"
+        },
+        {
+          "name": "name",
+          "type_name": "WideString"
+        }
+      ]
+    },
+    {
+      "name": "LeafBClass",
+      "first_extra_field": "offset",
+      "extra_fields": [
+        {
+          "name": "offset",
+          "type_name": "UnsignedNumeric"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "attr",
+          "type": "LeafMemberAttributeField"
+        }
+      ]
+    },
+    {
+      "name": "LeafBitfield"
+    },
+    {
+      "name": "LeafClass",
+      "first_extra_field": "data",
+      "extra_fields": [
+        {
+          "name": "size",
+          "type_name": "UnsignedNumeric"
+        },
+        {
+          "name": "name",
+          "type_name": "WideString"
+        },
+        {
+          "name": "decorated_name",
+          "type_name": "WideString",
+          "condition": "property().decorated_name_present != 0"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "property",
+          "type": "LeafPropertyField"
+        }
+      ]
+    },
+    {
+      "name": "LeafEnum",
+      "first_extra_field": "name",
+      "extra_fields": [
+        {
+          "name": "name",
+          "type_name": "WideString"
+        },
+        {
+          "name": "decorated_name",
+          "type_name": "WideString",
+          "condition": "property().decorated_name_present != 0"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "property",
+          "type": "LeafPropertyField"
+        }
+      ]
+    },
+    {
+      "name": "LeafEnumerate",
+      "first_extra_field": "value",
+      "extra_fields": [
+        {
+          "name": "value",
+          "type_name": "NumericConstant"
+        },
+        {
+          "name": "name",
+          "type_name": "WideString"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "attr",
+          "type": "LeafMemberAttributeField"
+        }
+      ]
+    },
+    {
+      "name": "LeafFriendCls"
+    },
+    {
+      "name": "LeafFriendFcn",
+      "first_extra_field": "name",
+      "extra_fields": [
+        {
+          "name": "name",
+          "type_name": "WideString"
+        }
+      ]
+    },
+    {
+      "name": "LeafIndex"
+    },
+    {
+      "name": "LeafMember",
+      "first_extra_field": "offset",
+      "extra_fields": [
+        {
+          "name": "offset",
+          "type_name": "UnsignedNumeric"
+        },
+        {
+          "name": "name",
+          "type_name": "WideString"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "attr",
+          "type": "LeafMemberAttributeField"
+        }
+      ]
+    },
+    {
+      "name": "LeafMethod",
+      "first_extra_field": "name",
+      "extra_fields": [
+        {
+          "name": "name",
+          "type_name": "WideString"
+        }
+      ]
+    },
+    {
+      "original_name": "LeafMFunc",
+      "name": "LeafMFunction"
+    },
+    {
+      "name": "LeafModifier",
+      "first_extra_field": "attr",
+      "extra_fields": [
+        {
+          "name": "attr",
+          "type_name": "LeafModifierAttribute"
+        }
+      ]
+    },
+    {
+      "name": "LeafNestType",
+      "original_name": "LeafNestTypeEx",
+      "first_extra_field": "name",
+      "extra_fields": [
+        {
+          "name": "name",
+          "type_name": "WideString"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "attr",
+          "type": "LeafMemberAttributeField"
+        }
+      ]
+    },
+    {
+      "name": "LeafOneMethod",
+      "first_extra_field": "vbaseoff",
+      "extra_fields": [
+        {
+          "name": "vbaseoff",
+          "type_name": "uint32_t",
+          "condition": "attr().mprop == Microsoft_Cci_Pdb::CV_MTintro ||\n attr().mprop == Microsoft_Cci_Pdb::CV_MTpureintro"
+        },
+        {
+          "name": "name",
+          "type_name": "WideString"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "attr",
+          "type": "LeafMemberAttributeField"
+        }
+      ]
+    },
+    {
+      "original_name": "LeafPointer::LeafPointerBody",
+      "name": "LeafPointer",
+      "first_extra_field": "attr",
+      "extra_fields": [
+        {
+          "name": "attr",
+          "type_name": "LeafPointerAttribute"
+        },
+        {
+          "name": "containing_class",
+          "type_name": "uint32_t",
+          "condition": "attr().ptrmode == Microsoft_Cci_Pdb::CV_PTR_MODE_PMEM ||\n attr().ptrmode == Microsoft_Cci_Pdb::CV_PTR_MODE_PMFUNC"
+        },
+        {
+          "name": "pmtype",
+          "type_name": "uint16_t",
+          "condition": "attr().ptrmode == Microsoft_Cci_Pdb::CV_PTR_MODE_PMEM ||\n attr().ptrmode == Microsoft_Cci_Pdb::CV_PTR_MODE_PMFUNC"
+        }
+      ]
+    },
+    {
+      "original_name": "LeafProc",
+      "name": "LeafProcedure"
+    },
+    {
+      "name": "LeafSTMember",
+      "first_extra_field": "name",
+      "extra_fields": [
+        {
+          "name": "name",
+          "type_name": "WideString"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "attr",
+          "type": "LeafMemberAttributeField"
+        }
+      ]
+    },
+    {
+      "name": "LeafUnion",
+      "first_extra_field": "data",
+      "extra_fields": [
+        {
+          "name": "size",
+          "type_name": "UnsignedNumeric"
+        },
+        {
+          "name": "name",
+          "type_name": "WideString"
+        },
+        {
+          "name": "decorated_name",
+          "type_name": "WideString",
+          "condition": "property().decorated_name_present != 0"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "property",
+          "type": "LeafPropertyField"
+        }
+      ]
+    },
+    {
+      "name": "LeafVBClass",
+      "first_extra_field": "vbpoff",
+      "extra_fields": [
+        {
+          "name": "vbpoff",
+          "type_name": "UnsignedNumeric"
+        },
+        {
+          "name": "vboff",
+          "type_name": "UnsignedNumeric"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "attr",
+          "type": "LeafMemberAttributeField"
+        }
+      ]
+    },
+    {
+      "name": "LeafVFuncOff"
+    },
+    {
+      "name": "LeafVFuncTab"
+    },
+    {
+      "name": "LeafVTShape",
+      "first_extra_field": "desc"
+    },
+    {
+      "original_name": "mlMethod",
+      "name": "MethodListRecord",
+      "first_extra_field": "vbaseoff",
+      "extra_fields": [
+        {
+          "name": "vbaseoff",
+          "type_name": "uint32_t",
+          "condition": "attr().mprop == Microsoft_Cci_Pdb::CV_MTintro ||\n attr().mprop == Microsoft_Cci_Pdb::CV_MTpureintro"
+        }
+      ],
+      "retyped_fields": [
+        {
+          "name": "attr",
+          "type": "LeafMemberAttributeField"
+        }
+      ]
+    }
+  ],
+  "types": {
+    "WideString": {
+      "parser": "ReadWideString",
+      "type": "base::string16"
+    },
+    "UnsignedNumeric": {
+      "parser": "ReadUnsignedNumeric",
+      "ret_by_value": "True",
+      "type": "uint64_t"
+    },
+    "NumericConstant": {
+      "parser": "ReadNumericConstant",
+      "type": "NumericConstant"
+    }
+  }
+}

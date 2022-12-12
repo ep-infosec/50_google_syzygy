@@ -1,0 +1,371 @@
+// Copyright 2012 Google Inc. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "syzygy/pdb/pdb_dbi_stream.h"
+
+#include "base/strings/stringprintf.h"
+#include "syzygy/common/align.h"
+#include "syzygy/pdb/pdb_constants.h"
+#include "syzygy/pdb/pdb_stream.h"
+#include "syzygy/pdb/pdb_stream_reader.h"
+#include "syzygy/pdb/pdb_util.h"
+
+namespace pdb {
+
+bool DbiModuleInfo::Read(common::BinaryStreamParser* parser) {
+  DCHECK(parser != nullptr);
+
+  if (!parser->Read(&module_info_base_) || !parser->ReadString(&module_name_) ||
+      !parser->ReadString(&object_name_) || !parser->AlignTo(4)) {
+    LOG(ERROR) << "Unable to read module information.";
+    return false;
+  }
+
+  return true;
+}
+
+// Reads the header from the Dbi stream of the PDB.
+bool DbiStream::ReadDbiHeaders(pdb::PdbStream* stream) {
+  DCHECK(stream != NULL);
+
+  if (!stream->ReadBytesAt(0, sizeof(header_), &header_)) {
+    LOG(ERROR) << "Unable to read the header of the Dbi Stream.";
+    return false;
+  }
+
+  size_t dbg_header_offs = pdb::GetDbiDbgHeaderOffset(header_);
+  if (!stream->ReadBytesAt(dbg_header_offs, sizeof(dbg_header_),
+                           &dbg_header_)) {
+    LOG(ERROR) << "Unable to read Dbg header of the Dbi Stream.";
+    return false;
+  }
+
+  return true;
+}
+
+// Reads the module info substream from the Dbi stream of the PDB.
+bool DbiStream::ReadDbiModuleInfo(pdb::PdbStream* stream) {
+  DCHECK(stream != NULL);
+
+  // This substream starts just after the Dbi header in the Dbi stream.
+  size_t module_start = sizeof(pdb::DbiHeader);
+
+  pdb::PdbStreamReaderWithPosition reader(module_start, header_.gp_modi_size,
+                                          stream);
+  common::BinaryStreamParser parser(&reader);
+  // Read each module info block.
+  while (!reader.AtEnd()) {
+    DbiModuleInfo module_info;
+    if (!module_info.Read(&parser))
+      return false;
+    modules_.push_back(module_info);
+  }
+
+  if (!reader.AtEnd()) {
+    LOG(ERROR) << "Module info substream of the Dbi stream is not valid.";
+    return false;
+  }
+
+  return true;
+}
+
+// Reads the section contribs substream from the Dbi stream of the PDB.
+bool DbiStream::ReadDbiSectionContribs(pdb::PdbStream* stream) {
+  DCHECK(stream != NULL);
+
+  size_t section_contribs_start = sizeof(pdb::DbiHeader) + header_.gp_modi_size;
+  pdb::PdbStreamReaderWithPosition reader(
+      section_contribs_start, header_.section_contribution_size, stream);
+  common::BinaryStreamParser parser(&reader);
+  uint32_t signature = 0;
+  if (!parser.Read(&signature)) {
+    LOG(ERROR) << "Unable to seek to section contributions substream.";
+    return false;
+  }
+
+  if (signature != kPdbDbiSectionContribsSignature) {
+    LOG(ERROR) << "Unexpected signature for the section contribs substream. "
+               << "Expected "
+               << base::StringPrintf("0x%08X", kPdbDbiSectionContribsSignature)
+               << ", read "
+               << base::StringPrintf("0x%08X", signature) << ".";
+    return false;
+  }
+
+  size_t section_contrib_count =
+      (header_.section_contribution_size - reader.Position()) /
+      sizeof(DbiSectionContrib);
+
+  if (!parser.ReadMultiple(section_contrib_count, &section_contribs_)) {
+    LOG(ERROR) << "Unable to read section contributions.";
+    return false;
+  }
+
+  if (!reader.AtEnd()) {
+    LOG(ERROR) << "Section contribs substream of the Dbi stream is not valid.";
+    return false;
+  }
+
+  return true;
+}
+
+// Reads the section map substream from the Dbi stream of the PDB.
+bool DbiStream::ReadDbiSectionMap(pdb::PdbStream* stream) {
+  DCHECK(stream != NULL);
+
+  size_t section_map_start = sizeof(pdb::DbiHeader)
+      + header_.gp_modi_size
+      + header_.section_contribution_size;
+  pdb::PdbStreamReaderWithPosition reader(section_map_start,
+                                          header_.section_map_size, stream);
+  common::BinaryStreamParser parser(&reader);
+  uint16_t number_of_sections = 0;
+  if (!parser.Read(&number_of_sections)) {
+    LOG(ERROR) << "Unable to read the length of the section map in the Dbi "
+               << "stream.";
+    return false;
+  }
+
+  // The number of section appears to be present twice. This check ensure that
+  // the value are always equals. If it's not it'll give us a sample to
+  // understand what's this value.
+  uint16_t number_of_sections_copy = 0;
+  if (!parser.Read(&number_of_sections_copy)) {
+    LOG(ERROR) << "Unable to read the copy of the length of the section map in "
+               << "the Dbi stream.";
+    return false;
+  }
+
+  if (number_of_sections != number_of_sections_copy) {
+    LOG(ERROR) << "Mismatched values for the length of the section map ("
+               <<  number_of_sections << " vs "<< number_of_sections_copy
+               << ").";
+    return false;
+  }
+
+  while (!reader.AtEnd()) {
+    DbiSectionMapItem section_map_item;
+    if (!parser.Read(&section_map_item)) {
+      LOG(ERROR) << "Failed to read a section map item";
+      return false;
+    }
+
+    section_map_[section_map_item.section_number] = section_map_item;
+  }
+
+  if (section_map_.size() != number_of_sections) {
+    LOG(ERROR) << "Unexpected number of sections in the section map (expected "
+               << number_of_sections << ", read " << section_map_.size()
+               << ").";
+    return false;
+  }
+
+  if (!reader.AtEnd()) {
+    LOG(ERROR) << "Section map substream of the Dbi stream is not valid.";
+    return false;
+  }
+
+  return true;
+}
+
+// Reads the file info substream from the Dbi stream of the PDB.
+// The structure of this substream is:
+// Header | File-blocks table | Offset table | Name table.
+// - The header contains the number of entries in the File-blocks table (16
+//    bits) followed by the number of entries in the offset table (16 bits). You
+//   have to multiply each size by 4 to obtain the size in bytes.
+// - The file-blocks table is divided in 2 parts. The first part contains the
+//   starting index of each block (16 bits) and the second one contains
+//   the length of these blocks. These value refer to the offset table. It
+//   seems that there's always a last block with a starting value equal to the
+//   length of the offset table and a length of 0 at the end of this table.
+// - The offset table contains offsets to the beginning of file names in the
+//   name table. These offsets are relative to the beginning of the name table.
+// - The name table contain all the filenames used in this substream.
+bool DbiStream::ReadDbiFileInfo(pdb::PdbStream* stream) {
+  DCHECK(stream != NULL);
+
+  size_t file_info_start = sizeof(pdb::DbiHeader)
+      + header_.gp_modi_size
+      + header_.section_contribution_size
+      + header_.section_map_size;
+  pdb::PdbStreamReaderWithPosition reader(file_info_start,
+                                          header_.file_info_size, stream);
+  common::BinaryStreamParser parser(&reader);
+
+  uint16_t file_blocks_table_size = 0;
+  uint16_t offset_table_size = 0;
+  if (!parser.Read(&file_blocks_table_size) ||
+      !parser.Read(&offset_table_size)) {
+    LOG(ERROR) << "Unable to read the header of the file info substream.";
+    return false;
+  }
+
+  // Calculate the starting address of the different sections of this substream.
+  size_t file_blocks_table_start = file_info_start + reader.Position();
+  size_t offset_table_start =
+      file_blocks_table_start + file_blocks_table_size * sizeof(uint32_t);
+
+  if (!ReadDbiFileInfoBlocks(stream,
+                             file_blocks_table_size,
+                             file_blocks_table_start,
+                             offset_table_start)) {
+    return false;
+  }
+
+  size_t name_table_start =
+      offset_table_start + offset_table_size * sizeof(uint32_t);
+  size_t file_info_end = file_info_start + header_.file_info_size;
+
+  // Read the name table in this substream.
+  if (!ReadDbiFileNameTable(stream,
+                            name_table_start,
+                            file_info_end)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool DbiStream::ReadDbiFileInfoBlocks(pdb::PdbStream* stream,
+                                      uint16_t file_blocks_table_size,
+                                      size_t file_blocks_table_start,
+                                      size_t offset_table_start) {
+  file_info_.first.resize(file_blocks_table_size);
+
+  // The block info data is composed of two parallel arrays in the stream.
+  // The first array is an array of uint16_t block start positions, and the
+  // second one is an array of uint16_t lengths.
+  // Each {start, length} pair notes the location and length of variable-length
+  // array of uint16_t identifiers. These identifiers in turn then point to
+  // locations in the file name table, and so identify a file name.
+  // This is done because there's a lot of repetition in the file name data, as
+  // every compilation unit ends up including a subset of the same files.
+
+  // Create a reader over the start position array.
+  pdb::PdbStreamReaderWithPosition start_reader(
+      file_blocks_table_start, file_blocks_table_size * sizeof(uint16_t),
+      stream);
+  common::BinaryStreamParser start_parser(&start_reader);
+
+  // Create a reader over the length array.
+  size_t file_block_length_start =
+      file_blocks_table_start + file_blocks_table_size * sizeof(uint16_t);
+  pdb::PdbStreamReaderWithPosition length_reader(
+      file_block_length_start, file_blocks_table_size * sizeof(uint16_t),
+      stream);
+  common::BinaryStreamParser length_parser(&length_reader);
+
+  // Read information about each block of the file info substream.
+  for (int i = 0; i < file_blocks_table_size; ++i) {
+    uint16_t block_start = 0;
+    uint16_t block_length = 0;
+    if (!start_parser.Read(&block_start) ||
+        !length_parser.Read(&block_length)) {
+      LOG(ERROR) << "Unable to read the file info substream.";
+      return false;
+    }
+
+    pdb::PdbStreamReaderWithPosition block_reader(
+        offset_table_start + block_start * sizeof(uint32_t),
+        block_length * sizeof(uint32_t), stream);
+    common::BinaryStreamParser block_parser(&block_reader);
+    // Fill the file list.
+    if (!block_parser.ReadMultiple(block_length, &file_info_.first.at(i))) {
+      LOG(ERROR) << "Unable to read the file info substream.";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// It would be useful to move this code to a more generic function if we see
+// this structure somewhere else in the PDB.
+bool DbiStream::ReadDbiFileNameTable(pdb::PdbStream* stream,
+                                     size_t name_table_start,
+                                     size_t name_table_end) {
+  DCHECK_LE(name_table_start, name_table_end);
+  pdb::PdbStreamReaderWithPosition reader(
+      name_table_start, name_table_end - name_table_start, stream);
+  common::BinaryStreamParser parser(&reader);
+
+  while (!reader.AtEnd()) {
+    std::string filename;
+    size_t pos = reader.Position();
+    if (!parser.ReadString(&filename)) {
+      LOG(ERROR) << "Unable to read the name table of the file info substream.";
+      return false;
+    }
+    file_info_.second.emplace(static_cast<uint32_t>(pos), filename);
+  }
+
+  if (!reader.AtEnd()) {
+    LOG(ERROR) << "File info substream of the Dbi stream is not valid.";
+    return false;
+  }
+
+  return true;
+}
+
+bool DbiStream::ReadDbiECInfo(pdb::PdbStream* stream) {
+  // It's important to note that the ec_info_size field appears after the
+  // dbg_header_size field in the header of this stream but the EC info
+  // substream is located before the DbgHeader substream.
+  size_t ec_info_start = sizeof(pdb::DbiHeader)
+      + header_.gp_modi_size
+      + header_.section_contribution_size
+      + header_.section_map_size
+      + header_.file_info_size
+      + header_.ts_map_size;
+  size_t ec_info_end = ec_info_start + header_.ec_info_size;
+
+  return ReadStringTable(stream,
+                         "EC info",
+                         ec_info_start,
+                         ec_info_end,
+                         &ec_info_vector_);
+}
+
+bool DbiStream::Read(pdb::PdbStream* stream ) {
+  DCHECK(stream != NULL);
+
+  if (!ReadDbiHeaders(stream))
+    return false;
+
+  if (!ReadDbiModuleInfo(stream))
+    return false;
+
+  if (!ReadDbiSectionContribs(stream))
+    return false;
+
+  if (!ReadDbiSectionMap(stream))
+    return false;
+
+  if (!ReadDbiFileInfo(stream))
+    return false;
+
+  if (header_.ts_map_size != 0) {
+    LOG(ERROR) << "The length of the TS map is expected to be null but we've "
+               << "read a length of " << header_.ts_map_size << ".";
+    return false;
+  }
+
+  if (!ReadDbiECInfo(stream))
+    return false;
+
+  return true;
+}
+
+}  // namespace pdb
